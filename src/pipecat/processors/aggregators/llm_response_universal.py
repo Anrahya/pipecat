@@ -84,7 +84,10 @@ from pipecat.turns.user_start import BaseUserTurnStartStrategy, UserTurnStartedP
 from pipecat.turns.user_stop import BaseUserTurnStopStrategy, UserTurnStoppedParams
 from pipecat.turns.user_turn_completion_mixin import UserTurnCompletionConfig
 from pipecat.turns.user_turn_controller import UserTurnController
-from pipecat.turns.user_turn_strategies import UserTurnStrategies
+from pipecat.turns.user_turn_strategies import (
+    FilterIncompleteUserTurnStrategies,
+    UserTurnStrategies,
+)
 from pipecat.utils.context.llm_context_summarization import (
     LLMAutoContextSummarizationConfig,
     LLMContextSummarizationConfig,
@@ -110,18 +113,17 @@ class LLMUserAggregatorParams:
         audio_idle_timeout: Timeout in seconds to force speech stop when
             no audio frames are received while in SPEAKING state (e.g. user mutes
             mic mid-speech). Set to 0 to disable. Defaults to 1.0.
-        filter_incomplete_user_turns: [DEPRECATED] Add
-            :class:`~pipecat.turns.user_stop.LLMTurnCompletionUserTurnStopStrategy`
-            to ``user_turn_strategies.stop`` instead. When enabled, the LLM
-            outputs a turn-completion marker at the start of each response:
-            ✓ (complete), ○ (incomplete short), or ◐ (incomplete long).
-            Incomplete responses are suppressed and timeouts trigger
-            re-prompting.
+        filter_incomplete_user_turns: [DEPRECATED] Use
+            ``user_turn_strategies=FilterIncompleteUserTurnStrategies()``
+            instead. When enabled, the LLM outputs a turn-completion
+            marker at the start of each response: ✓ (complete), ○
+            (incomplete short), or ◐ (incomplete long). Incomplete
+            responses are suppressed and timeouts trigger re-prompting.
         user_turn_completion_config: Configuration for turn completion behavior including
             custom instructions, timeouts, and prompts. Only used when
             filter_incomplete_user_turns is True (deprecated path) — for the
             new strategy-based API, pass the config directly to
-            ``LLMTurnCompletionUserTurnStopStrategy(config=...)``.
+            ``FilterIncompleteUserTurnStrategies(config=...)``.
     """
 
     user_turn_strategies: UserTurnStrategies | None = None
@@ -137,8 +139,7 @@ class LLMUserAggregatorParams:
         if self.filter_incomplete_user_turns:
             warnings.warn(
                 "LLMUserAggregatorParams.filter_incomplete_user_turns is deprecated. "
-                "Add LLMTurnCompletionUserTurnStopStrategy to "
-                "user_turn_strategies.stop instead.",
+                "Use user_turn_strategies=FilterIncompleteUserTurnStrategies() instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -462,21 +463,15 @@ class LLMUserAggregator(LLMContextAggregator):
         user_turn_strategies = self._params.user_turn_strategies or UserTurnStrategies()
 
         # Deprecated path: translate filter_incomplete_user_turns into
-        # wrapping pre-existing stop strategies with deferred() and
-        # appending LLMTurnCompletionUserTurnStopStrategy. The
+        # the equivalent FilterIncompleteUserTurnStrategies wiring. The
         # DeprecationWarning is emitted in LLMUserAggregatorParams.__post_init__.
         if self._params.filter_incomplete_user_turns:
-            from pipecat.turns.user_stop import (
-                LLMTurnCompletionUserTurnStopStrategy,
-                deferred,
+            user_turn_strategies = FilterIncompleteUserTurnStrategies(
+                start=user_turn_strategies.start,
+                stop=user_turn_strategies.stop,
+                config=self._params.user_turn_completion_config,
             )
-
-            existing_stop = list(user_turn_strategies.stop or [])
-            user_turn_strategies.stop = [deferred(s) for s in existing_stop] + [
-                LLMTurnCompletionUserTurnStopStrategy(
-                    config=self._params.user_turn_completion_config
-                )
-            ]
+            self._params.user_turn_strategies = user_turn_strategies
 
         self._user_is_muted = False
         self._user_turn_start_timestamp = ""
