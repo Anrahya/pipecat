@@ -49,6 +49,7 @@ from pipecat.frames.frames import (
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
+from pipecat.processors.aggregators import async_tool_messages
 from pipecat.processors.aggregators.llm_context import LLMContext, LLMSpecificMessage
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.aws.nova_sonic.session_continuation import (
@@ -619,6 +620,36 @@ class AWSNovaSonicLLMService(LLMService[AWSNovaSonicLLMAdapter]):
             # LLMSpecificMessages are opaque provider-specific payloads, not
             # standard tool-result messages — skip them.
             if isinstance(message, LLMSpecificMessage):
+                continue
+            # Async-tool messages live alongside regular tool messages in the
+            # context; detect and route them before the regular logic so we
+            # don't try to send the async-tool envelope JSON as a tool result.
+            async_payload = async_tool_messages.parse_message(message)
+            if async_payload is not None:
+                if async_payload.tool_call_id in self._completed_tool_calls:
+                    continue
+                if async_payload.kind == "started":
+                    # The provider already issued the tool call and natively
+                    # awaits a result; nothing to send for the started marker.
+                    self._completed_tool_calls.add(async_payload.tool_call_id)
+                    continue
+                if async_payload.kind == "intermediate":
+                    logger.error(
+                        f"{self}: Nova Sonic does not support streamed async "
+                        f"tool results; dropping intermediate result for "
+                        f"tool_call_id={async_payload.tool_call_id}. Use a "
+                        f"non-realtime LLM service if your tool needs to "
+                        f"stream intermediate results."
+                    )
+                    await self.push_error(
+                        error_msg=("Nova Sonic does not support streamed async tool results."),
+                    )
+                    continue
+                # kind == "final": deliver via the formal toolResult channel
+                # — same path as a synchronous tool result, just delayed.
+                if send_new_results:
+                    await self._send_tool_result(async_payload.tool_call_id, async_payload.result)
+                self._completed_tool_calls.add(async_payload.tool_call_id)
                 continue
             if message.get("role") == "tool" and message.get("content") not in [
                 "IN_PROGRESS",

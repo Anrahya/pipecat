@@ -661,6 +661,12 @@ class FunctionCallResultProperties:
         is_final: Whether this is the final result for the function call. When
             ``False`` the result is treated as an intermediate update. Defaults to ``True``.
             Only meaningful for async function calls (``cancel_on_interruption=False``).
+            Note: realtime LLM services (e.g., AWS Nova Sonic, Gemini Live,
+            OpenAI Realtime) do not support streamed intermediate results;
+            they deliver only the final result to the provider. An
+            intermediate result reported to a realtime service is dropped
+            and an error is raised. Use a non-realtime LLM service if your
+            tool needs to stream intermediate results.
     """
 
     run_llm: bool | None = None
