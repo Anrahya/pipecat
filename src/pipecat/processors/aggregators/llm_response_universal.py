@@ -113,17 +113,24 @@ class LLMUserAggregatorParams:
         audio_idle_timeout: Timeout in seconds to force speech stop when
             no audio frames are received while in SPEAKING state (e.g. user mutes
             mic mid-speech). Set to 0 to disable. Defaults to 1.0.
-        filter_incomplete_user_turns: [DEPRECATED] Use
-            ``user_turn_strategies=FilterIncompleteUserTurnStrategies()``
-            instead. When enabled, the LLM outputs a turn-completion
-            marker at the start of each response: ✓ (complete), ○
-            (incomplete short), or ◐ (incomplete long). Incomplete
-            responses are suppressed and timeouts trigger re-prompting.
+        filter_incomplete_user_turns: When enabled, the LLM outputs a
+            turn-completion marker at the start of each response: ✓
+            (complete), ○ (incomplete short), or ◐ (incomplete long).
+            Incomplete responses are suppressed and timeouts trigger
+            re-prompting.
+
+            .. deprecated:: 1.2.0
+                Use ``user_turn_strategies=FilterIncompleteUserTurnStrategies()``
+                instead. Will be removed in version 2.0.0.
+
         user_turn_completion_config: Configuration for turn completion behavior including
             custom instructions, timeouts, and prompts. Only used when
-            filter_incomplete_user_turns is True (deprecated path) — for the
-            new strategy-based API, pass the config directly to
-            ``FilterIncompleteUserTurnStrategies(config=...)``.
+            ``filter_incomplete_user_turns`` is True.
+
+            .. deprecated:: 1.2.0
+                Pass the config directly to
+                ``FilterIncompleteUserTurnStrategies(config=...)`` instead.
+                Will be removed in version 2.0.0.
     """
 
     user_turn_strategies: UserTurnStrategies | None = None
@@ -140,6 +147,15 @@ class LLMUserAggregatorParams:
             warnings.warn(
                 "LLMUserAggregatorParams.filter_incomplete_user_turns is deprecated. "
                 "Use user_turn_strategies=FilterIncompleteUserTurnStrategies() instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        if self.user_turn_completion_config is not None:
+            warnings.warn(
+                "LLMUserAggregatorParams.user_turn_completion_config is deprecated. "
+                "Pass the config directly to "
+                "FilterIncompleteUserTurnStrategies(config=...) instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -166,6 +182,11 @@ class LLMAssistantAggregatorParams:
     # ---------------------------------------------------------------------------
     # Deprecated field names — kept for backward compatibility.
     # Use enable_auto_context_summarization and auto_context_summarization_config instead.
+    #
+    # .. deprecated:: 1.2.0
+    #     Use ``enable_auto_context_summarization`` and
+    #     ``auto_context_summarization_config`` instead. Will be removed in
+    #     version 2.0.0.
     # ---------------------------------------------------------------------------
     enable_context_summarization: bool | None = None
     context_summarization_config: LLMContextSummarizationConfig | None = None
